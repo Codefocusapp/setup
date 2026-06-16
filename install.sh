@@ -66,7 +66,9 @@ let kServiceUUID        = CBUUID(string: "CC1A0DE0-0000-1000-8000-00805F9B34FB")
 let kCharacteristicUUID = CBUUID(string: "CC1A0DE0-0001-1000-8000-00805F9B34FB")
 let kStatePath = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/claude-state")
 
-let kStaleSeconds: TimeInterval = 30   // "active" gilt nur, solange die Datei frisch ist
+let kStaleSeconds: TimeInterval = 120  // "active" gilt nur, solange die Datei frisch ist
+// 120s = Fallback für ESC-Abbruch. Normales Fertigwerden sperrt sofort via Stop-Hook;
+// langes Nachdenken/Antworten ohne Tool-Call (bis 2 Min) löst KEINE Fehl-Sperre mehr aus.
 
 func readState() -> UInt8 {
     guard let raw = try? String(contentsOfFile: kStatePath, encoding: .utf8),
