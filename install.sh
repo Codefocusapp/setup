@@ -6,13 +6,18 @@
 #
 set -e
 
-EARNED_DIR="$HOME/.earned"
+CF_DIR="$HOME/.codefocus"
 CLAUDE_DIR="$HOME/.claude"
 STATE_FILE="$CLAUDE_DIR/claude-state"
 SETTINGS="$CLAUDE_DIR/settings.json"
-PLIST="$HOME/Library/LaunchAgents/app.earned.peripheral.plist"
-BIN="$EARNED_DIR/earned-ble"
-SRC="$EARNED_DIR/earned-ble.swift"
+PLIST="$HOME/Library/LaunchAgents/app.codefocus.peripheral.plist"
+APP="$CF_DIR/CodeFocus.app"
+BIN="$APP/Contents/MacOS/CodeFocus"
+SRC="$CF_DIR/CodeFocus.swift"
+LOG="$CF_DIR/codefocus.log"
+# Alt-Setup (frühere "Earned"-Version) zum Aufräumen
+OLD_DIR="$HOME/.earned"
+OLD_PLIST="$HOME/Library/LaunchAgents/app.earned.peripheral.plist"
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }
 ok()   { printf "\033[32m✓\033[0m %s\n" "$1"; }
@@ -45,7 +50,11 @@ ok "Claude Code gefunden"
 PYTHON="$(command -v python3 || true)"
 [ -n "$PYTHON" ] || die "python3 nicht gefunden (kommt mit Xcode CLT)."
 
-mkdir -p "$EARNED_DIR" "$HOME/Library/LaunchAgents"
+# Alt-Setup (frühere "Earned"-Version) aufräumen
+launchctl unload "$OLD_PLIST" 2>/dev/null || true
+rm -rf "$OLD_DIR" "$OLD_PLIST" 2>/dev/null || true
+
+mkdir -p "$APP/Contents/MacOS" "$HOME/Library/LaunchAgents"
 
 # ---------- 2. BLE-Peripheral schreiben ----------
 bold "Installiere BLE-Peripheral…"
@@ -129,6 +138,29 @@ SWIFTEOF
 swiftc -O "$SRC" -o "$BIN" || die "Kompilierung fehlgeschlagen."
 ok "BLE-Peripheral kompiliert"
 
+# App-Bundle-Identität → Bluetooth-Dialog zeigt "CodeFocus" + eigene Erklärung
+cat > "$APP/Contents/Info.plist" <<'PLISTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>CodeFocus</string>
+  <key>CFBundleDisplayName</key><string>CodeFocus</string>
+  <key>CFBundleIdentifier</key><string>app.codefocus.peripheral</string>
+  <key>CFBundleExecutable</key><string>CodeFocus</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSUIElement</key><true/>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>CodeFocus connects to your iPhone over Bluetooth to share when Claude Code is working.</string>
+</dict>
+</plist>
+PLISTEOF
+codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+ok "CodeFocus.app erstellt (Bluetooth-Dialog zeigt \"CodeFocus\")"
+
 # ---------- 3. State-Datei ----------
 [ -f "$STATE_FILE" ] || printf idle > "$STATE_FILE"
 
@@ -175,13 +207,13 @@ cat > "$PLIST" <<PLISTEOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>app.earned.peripheral</string>
+  <key>Label</key><string>app.codefocus.peripheral</string>
   <key>ProgramArguments</key>
   <array><string>$BIN</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>$EARNED_DIR/earned.log</string>
-  <key>StandardErrorPath</key><string>$EARNED_DIR/earned.log</string>
+  <key>StandardOutPath</key><string>$LOG</string>
+  <key>StandardErrorPath</key><string>$LOG</string>
 </dict>
 </plist>
 PLISTEOF
@@ -195,10 +227,10 @@ echo ""
 bold "✅ Fertig!"
 echo ""
 bold "Beim ersten Start fragt macOS nach Bluetooth-Erlaubnis → bitte erlauben."
-echo "(Falls kein Dialog kommt: Systemeinstellungen → Datenschutz → Bluetooth → earned-ble aktivieren)"
+echo "(Falls kein Dialog kommt: Systemeinstellungen → Datenschutz → Bluetooth → CodeFocus aktivieren)"
 echo ""
 bold "Öffne jetzt die CodeFocus-App auf deinem iPhone und verbinde dich."
 echo ""
-echo "Status:    tail -f $EARNED_DIR/earned.log"
-echo "Entfernen: launchctl unload $PLIST && rm -rf $EARNED_DIR \"$PLIST\""
+echo "Status:    tail -f $LOG"
+echo "Entfernen: launchctl unload $PLIST && rm -rf $CF_DIR \"$PLIST\""
 echo ""
