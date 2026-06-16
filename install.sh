@@ -87,10 +87,13 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
     func poll() {
         guard advertising else { return }
         let v = readState()
+        characteristic.value = Data([v])   // immer aktuell halten — fürs aktive Re-Read vom iPhone
         if v != last {
-            last = v
-            characteristic.value = Data([v])
-            manager.updateValue(Data([v]), for: characteristic, onSubscribedCentrals: nil)
+            // updateValue kann false liefern (Sende-Queue voll). Dann last NICHT setzen,
+            // damit der nächste Poll den Notify erneut versucht (statt ihn zu verschlucken).
+            if manager.updateValue(Data([v]), for: characteristic, onSubscribedCentrals: nil) {
+                last = v
+            }
         }
     }
     func peripheralManagerDidUpdateState(_ p: CBPeripheralManager) {
@@ -109,9 +112,12 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
         manager.add(svc)
     }
     func peripheralManager(_ p: CBPeripheralManager, didAdd s: CBService, error: Error?) {
+        // Echten Mac-Namen senden, damit das iPhone im "Choose your Mac"-Picker
+        // den richtigen Mac erkennt (statt generisch "ClaudeMac").
+        let name = Host.current().localizedName ?? "Mac"
         manager.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [kServiceUUID],
-            CBAdvertisementDataLocalNameKey: "ClaudeMac"
+            CBAdvertisementDataLocalNameKey: name
         ])
         advertising = true
     }
