@@ -57,9 +57,16 @@ let kServiceUUID        = CBUUID(string: "CC1A0DE0-0000-1000-8000-00805F9B34FB")
 let kCharacteristicUUID = CBUUID(string: "CC1A0DE0-0001-1000-8000-00805F9B34FB")
 let kStatePath = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/claude-state")
 
+let kStaleSeconds: TimeInterval = 30   // "active" gilt nur, solange die Datei frisch ist
+
 func readState() -> UInt8 {
-    guard let raw = try? String(contentsOfFile: kStatePath, encoding: .utf8) else { return 0 }
-    return raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "active" ? 1 : 0
+    guard let raw = try? String(contentsOfFile: kStatePath, encoding: .utf8),
+          raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "active" else { return 0 }
+    // Heartbeat: Hooks refreshen die Datei bei jedem Tool-Call. Wird sie zu lange
+    // nicht aktualisiert (z.B. ESC-Abbruch, Claude fertig ohne Stop-Hook) → idle.
+    if let m = (try? FileManager.default.attributesOfItem(atPath: kStatePath))?[.modificationDate] as? Date,
+       Date().timeIntervalSince(m) > kStaleSeconds { return 0 }
+    return 1
 }
 
 final class Peripheral: NSObject, CBPeripheralManagerDelegate {
@@ -150,6 +157,8 @@ def add(event, value):
     arr.append({"hooks": [{"type": "command", "command": cmd}]})
 
 add("UserPromptSubmit", "active")
+add("PreToolUse", "active")    # Heartbeat während Claude arbeitet
+add("PostToolUse", "active")   # Heartbeat während Claude arbeitet
 add("Stop", "idle")
 add("SessionEnd", "closed")
 
