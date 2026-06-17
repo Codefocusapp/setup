@@ -238,17 +238,21 @@ def strip_ours(arr):
             out.append(group)
     return out
 
-for ev in ("UserPromptSubmit", "Stop", "SessionEnd"):
+for ev in ("UserPromptSubmit", "Stop", "SessionEnd", "Notification"):
     if ev in cfg["hooks"]:
         cfg["hooks"][ev] = strip_ours(cfg["hooks"][ev])
 
-def add(event, mode):
+def add(event, mode, matcher=None):
     arr = cfg["hooks"].setdefault(event, [])
-    arr.append({"hooks": [{"type": "command", "command": "python3 %s %s" % (hook, mode)}]})
+    group = {"hooks": [{"type": "command", "command": "python3 %s %s" % (hook, mode)}]}
+    if matcher is not None:
+        group["matcher"] = matcher
+    arr.append(group)
 
-add("UserPromptSubmit", "add")     # Prompt ab → Marker an
-add("Stop", "remove")              # Antwort fertig → Marker weg
-add("SessionEnd", "remove")        # Session zu → Marker weg
+add("UserPromptSubmit", "add")                 # Prompt ab → Marker an
+add("Stop", "remove")                          # Antwort fertig → Marker weg
+add("SessionEnd", "remove")                    # Session zu → Marker weg
+add("Notification", "remove", "idle_prompt")   # zurück im Idle-Prompt (auch nach ESC!) → Marker weg
 
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
